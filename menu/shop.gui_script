@@ -1,0 +1,116 @@
+local data = require ("main.data")
+
+local function disablenode (self, node)
+	gui.set_enabled(node, false)
+end
+
+local info = {}
+info[1] = "This game offers premium content for Web Monetized users:"
+info[2] = "UNLOCK PREMIUM CONTENT BY BECOMING A COIL SUBSCRIBER!"
+info[3] = "COIL is like Netflix - you pay once a month to get all the web's premium content"
+
+local premium = {}
+premium[1] = "This is your premium content!"
+premium[2] = "Thank you for supporting me with Web Monetization!"
+premium[3] = ""
+
+local function content(enable)
+	for i = 1,3 do
+		gui.set_text(gui.get_node("info"..i), enable and premium[i] or info[i])
+	end
+	for i = 2, 6 do
+		gui.set_color(gui.get_node(tostring(i)), enable and vmath.vector4(1) or vmath.vector4(0.5))
+	end
+	gui.set_enabled(gui.get_node("space"), not enable)
+	gui.set_enabled(gui.get_node("right"), not enable)
+end
+
+local function blink_selected()
+	for i = 1,4 do
+		local node = gui.get_node("box"..tostring(i))
+		if data.SKIN ~= i then
+			gui.cancel_animation(node, gui.PROP_SCALE)
+		else
+			
+			gui.animate(node, gui.PROP_SCALE, 4.5, gui.EASING_INOUTSINE, 0.5, 0, _, gui.PLAYBACK_LOOP_PINGPONG)
+		end
+	end
+end
+
+function init(self)
+	msg.post(".", "acquire_input_focus")
+	self.node = gui.get_node("container")
+	self.wait = 2
+	gui.set_enabled(self.node, false)
+	gui.set_position(self.node, vmath.vector3(0, -100, 0))
+	gui.set_color(self.node, vmath.vector4(1,1,1,0))
+
+	sysinfo = sys.get_sys_info()
+
+	if sysinfo.system_name == "HTML5" then
+		gui.set_enabled(gui.get_node("gamepad"), false)
+		gui.set_position(gui.get_node("keys"), vmath.vector3(640,360,0))
+	end
+
+	blink_selected()
+
+	self.WM = data.WM
+	content(self.WM)
+end
+
+function update(self, dt)
+
+	if data.WM then gui.set_text(gui.get_node("info4"), "WM enabled")
+	else gui.set_text(gui.get_node("info4"), "WM disabled") end
+	if self.WM ~= data.WM then
+		self.WM = data.WM
+		content(self.WM)
+	end
+	if data.state == data.STATE_CONTENT then
+		if self.wait > 0 then self.wait = self.wait - 1 end
+	end
+end
+
+local function show(self)
+	gui.set_enabled(self.node, true)
+	gui.animate(self.node, gui.PROP_POSITION, vmath.vector3(0, 0, 0), gui.EASING_INOUTQUAD, 0.5)
+	gui.animate(self.node, gui.PROP_COLOR, vmath.vector4(1,1,1,1), gui.EASING_INOUTQUAD, 0.5)
+	data.state = data.STATE_CONTENT
+	self.wait = 2
+end
+
+local function hide(self)
+	gui.animate(self.node, gui.PROP_POSITION, vmath.vector3(0, -100, 0), gui.EASING_INOUTQUAD, 0.5, 0, disablenode)
+	gui.animate(self.node, gui.PROP_COLOR, vmath.vector4(1,1,1,0), gui.EASING_INOUTQUAD, 0.5)
+	self.wait = 2
+end
+
+function on_input(self, action_id, action)
+	if data.state == data.STATE_CONTENT and self.wait == 0 then
+		if action.released then
+			if action_id == data.action then
+				sys.open_url("https://coil.com/signup", { target = "_blank" })
+			elseif action_id == data.left then
+				hide(self)
+				msg.post("#menu", "show", {})
+			elseif action_id == data.right then
+				sys.open_url("https://coil.com", { target = "_blank" })
+			end
+
+			if data.WM then
+				for i = 1,4 do
+					if action_id == hash(tostring(i)) then
+						data.SKIN = i
+						blink_selected()
+						return
+					end
+				end
+			end
+		end
+	end
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == data.show then show(self)
+	end
+end

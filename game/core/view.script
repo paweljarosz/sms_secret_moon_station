@@ -1,0 +1,18 @@
+local data = require ("main.data")
+
+function init(self)
+	msg.post("#camera", "acquire_camera_focus")
+	self.pos = go.get_world_position()
+	self.target = data.playerpos
+	data.camera_speed = 1 -- speed start camera
+	timer.delay(0.1, false, function()
+		data.camera_speed = 0.1
+	end)
+end
+
+function update(self, dt)
+	self.target = data.playerpos
+	local v = vmath.vector3((self.target.x - self.pos.x) * data.camera_speed, (self.target.y - self.pos.y) * data.camera_speed, 0)
+	self.pos = self.pos + v
+	go.set_position(self.pos - data.offset)
+end

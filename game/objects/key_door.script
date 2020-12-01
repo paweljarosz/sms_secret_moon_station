@@ -1,0 +1,16 @@
+go.property("locked", true)
+
+local data = require ("main.data")
+
+function on_message(self, message_id, message, sender)
+	if self.locked and message_id == data.trigger
+	and message.enter and data.keys > 0 then
+		self.locked = false
+		local pos = go.get_position()
+		pos = data.world2tile(pos)
+		tilemap.set_tile("/level#tilemap", "world", pos.x, pos.y, 60)
+		sound.play("main:/sound#door_unlock")
+		data.keys = data.keys - 1
+		go.delete()
+	end
+end

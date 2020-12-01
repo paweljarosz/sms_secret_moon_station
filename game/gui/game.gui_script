@@ -1,0 +1,70 @@
+local data = require ("main.data")
+
+local function bars(self)
+	gui.set_text(gui.get_node("cubes"), string.format("%2d", data.lives))
+	gui.set_text(gui.get_node("gems"), string.format("%d", data.gems))--, data.totalgems))
+	gui.set_text(gui.get_node("keys"), string.format("%2d", data.keys))
+end
+
+local function fov_scale(self)
+	local a = data.playerpos.y/50
+	if a < 4 then a = 4 
+	elseif a > 8.5 then a = 8.5 end
+	gui.set_scale(gui.get_node("fov"), vmath.vector3(a,a,1))
+end
+
+GUI_URL = nil
+
+function init(self)
+	GUI_URL = msg.url()
+	gui.set_enabled(gui.get_node("ice_pistol"), data.ICE)
+	gui.set_enabled(gui.get_node("fire_pistol"), data.FIRE)
+	gui.set_color(gui.get_node("fire_help"), vmath.vector4(0))
+	gui.set_color(gui.get_node("ice_help"), vmath.vector4(0))
+
+	gui.play_flipbook(gui.get_node("player"), "hero_idle_"..tostring(data.SKIN))
+	gui.set_enabled(gui.get_node("gem_pistol"), data.WM)
+
+	self.time_elapsed = 0
+	self.timer = gui.get_node("timer")
+	self.min_elapsed = 0
+	self.timer_enabled = true
+	gui.set_enabled(self.timer, true)
+end
+
+function update(self, dt)
+	if data.state == data.STATE_PLAYING then
+		self.time_elapsed = self.time_elapsed + dt
+		if self.time_elapsed >= 60 then
+			self.time_elapsed = 0
+			self.min_elapsed = self.min_elapsed + 1
+		end 
+		gui.set_text(self.timer, self.min_elapsed..":"..string.format("%.2f", self.time_elapsed))
+	end
+	bars(self)
+	fov_scale(self)
+	if data.WM ~= self.WM then
+		self.WM = data.WM
+		gui.set_enabled(gui.get_node("gem_pistol"), data.WM)
+	end
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("stop") then
+		gui.set_enabled(self.timer, true)
+		gui.set_scale(self.timer, vmath.vector3(2))
+	elseif message_id == hash("pistol") then
+		gui.set_enabled(gui.get_node("ice_pistol"), data.ICE)
+		gui.set_enabled(gui.get_node("fire_pistol"), data.FIRE)
+		if message.fire then
+			gui.set_color(gui.get_node("fire_help"), vmath.vector4(1))
+			gui.animate(gui.get_node("fire_help"), gui.PROP_COLOR, vmath.vector4(1,1,1,0), gui.EASING_LINEAR, 4)
+		else
+			gui.set_color(gui.get_node("ice_help"), vmath.vector4(1))
+			gui.animate(gui.get_node("ice_help"), gui.PROP_COLOR, vmath.vector4(1,1,1,0), gui.EASING_LINEAR, 4)
+		end
+	elseif message_id == hash("timer") then
+		self.timer_enabled = not self.timer_enabled
+		gui.set_enabled(self.timer, self.timer_enabled)
+	end
+end

@@ -1,0 +1,13 @@
+local data = require ("main.data")
+
+go.property("second_sprite", false)
+
+function on_message(self, message_id, message, sender)
+	if message_id == data.trigger and (data.SKIN ~= 4) then
+		msg.post("#sprite", message.enter and "disable" or "enable")
+		if self.second_sprite then
+			msg.post("#sprite1", message.enter and "disable" or "enable")
+		end
+		tilemap.set_visible("/level#tilemap", "hidden", message.enter)
+	end
+end

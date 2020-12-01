@@ -1,0 +1,40 @@
+local data = require ("main.data")
+go.property("pipe", false)
+
+local FIRE_TILE = 68
+local WATERFALL_TILE = 400
+
+--local dist = require ("game.distance_sound")
+
+function builder(self, destroy)
+	self.falling = true
+	self.i = 1
+	self.pos = data.world2tile(go.get_position())
+	while self.falling do
+		local tile = tilemap.get_tile("/level#tilemap", "world", self.pos.x, self.pos.y - self.i)
+		if tile == FIRE_TILE then
+			tilemap.set_tile("/level#tilemap", "world", self.pos.x, self.pos.y - self.i, destroy and 0 or WATERFALL_TILE)
+			self.i = self.i + 1
+		end
+		if (not destroy and tile == 0)
+		or (destroy and tile == WATERFALL_TILE) then
+			tilemap.set_tile("/level#tilemap", "world", self.pos.x, self.pos.y - self.i, destroy and 0 or WATERFALL_TILE)
+			self.i = self.i + 1
+		else
+			self.falling = false
+		end
+	end
+end
+
+function init(self)
+	if self.pipe then
+		sprite.play_flipbook("#sprite", "pipe")
+	end
+	builder(self, false)
+	--dist.play("waterfall")
+end
+
+function final(self)
+	builder(self, true)
+	--sound.stop("main:/sound#waterfall")
+end

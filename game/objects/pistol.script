@@ -1,0 +1,24 @@
+go.property("ice", true)
+local data = require ("main.data")
+
+function init(self)
+	if not self.ice then
+		sprite.play_flipbook("#sprite", "fire_pistol")
+	end
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == data.trigger then
+		if message.enter then
+			sound.play("main:/sound#gun_pickup", {gain = 1})
+			if self.ice then data.ICE = true
+			else			 data.FIRE = true
+			end
+			msg.post(GUI_URL, "pistol", {fire = true})
+			sound.play("main:/sound#gem", {gain = 1})
+			msg.post("#sprite", "disable")
+		else
+			go.delete()
+		end
+	end
+end

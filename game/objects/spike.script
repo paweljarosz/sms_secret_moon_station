@@ -1,0 +1,17 @@
+local dist = require ("game.distance_sound")
+
+function init(self)
+	self.origin = go.get_position()
+	go.set_position(vmath.vector3(self.origin.x, self.origin.y - 6, self.origin.z))
+	go.set("#sprite", "tint.w", 0)
+	timer.delay(2, true, function()
+		dist.play("spike_up", true)
+		dist.play("spike_down", false)
+		timer.delay(1, false, function()
+			dist.play("spike_up", false)
+			dist.play("spike_down", true)
+		end)
+		go.animate("#sprite", "tint.w", go.PLAYBACK_ONCE_PINGPONG, 1, go.EASING_OUTBACK, 1)
+		go.animate(".", "position.y", go.PLAYBACK_ONCE_PINGPONG, self.origin.y + 6, go.EASING_OUTBACK, 1)
+	end)
+end

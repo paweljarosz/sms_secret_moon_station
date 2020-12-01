@@ -1,0 +1,109 @@
+local data = require ("main.data")
+
+go.property("ice", false)
+go.property("fire", false)
+
+local function spawn_player(self, x, y)
+	local pos = data.tile2world(vmath.vector3(x, y, 0.1))
+	msg.post("game_core/player", "position", {pos = pos})
+	data.spawnpos = pos
+	data.playerpos = pos
+end
+
+local function spawn_waterfall(self, x, y)
+	local pos = data.tile2world(vmath.vector3(x, y, 0))
+	factory.create("#waterfall_factory", pos, nil, {})
+end
+
+local function spawn_switch(self, x, y)
+	local pos = data.tile2world(vmath.vector3(x, y, 0))
+	pos.y = pos.y
+	factory.create("#switch_factory", pos, nil, {})
+end
+
+local function spawn_barrel(self, x ,y)
+	local pos = data.tile2world(vmath.vector3(x, y, 0))
+	pos.y = pos.y - 8
+	factory.create("#barrel_factory", pos, nil, {})
+end
+
+local function spawn_key_door(self, x ,y)
+	local pos = data.tile2world(vmath.vector3(x, y, 0))
+	factory.create("#key_door_factory", pos, nil, {})
+end
+
+local function spawn_spike(self, x ,y)
+	local pos = data.tile2world(vmath.vector3(x, y, 0))
+	pos.y = pos.y - 8
+	factory.create("#spike_factory", pos, nil, {})
+end
+
+local function spawn_block(self, x ,y, image)
+	local pos = data.tile2world(vmath.vector3(x, y, 0.2 ))
+	local id = factory.create("#block_factory", pos, nil, {})
+	table.insert(self.blocks, id)
+	if image then sprite.play_flipbook(msg.url(_, id, "sprite"), image) end
+end
+
+local function parse(self, blocks_only, layer)
+	sx, sy, w, h = tilemap.get_bounds("#tilemap")	
+	for y = sy, h+sy-1 do
+		for x = sx, w+sx-1 do
+			local t = tilemap.get_tile("#tilemap", layer or "world", x, y)
+			if t == 30 then
+				spawn_block(self, x-0.5, y)
+			elseif t == 269 then
+					spawn_waterfall(self, x, y)
+			elseif not blocks_only then
+				if t == 241 then
+					tilemap.set_tile("#tilemap", "world", x, y, 0)
+					spawn_player(self, x, y)
+				elseif t == 8 then
+					spawn_barrel(self, x, y)
+				elseif t == 57 then
+					spawn_key_door(self, x, y)
+				elseif t == 204 then
+					spawn_spike(self, x, y)
+				--elseif t == 269 then
+				--	spawn_waterfall(self, x, y)
+				elseif t == 103 then
+					data.totalgems = data.totalgems + 1
+				end
+			end
+		end
+	end
+end
+
+LEVEL_URL = nil
+
+function init(self)
+	self.blocks = {}
+	parse(self)
+	parse(self, _, "hidden")
+	LEVEL_URL = msg.url()
+	data.ICE = self.ice
+	data.FIRE = self.fire
+	data.keys = 0
+	tilemap.set_visible("/level#tilemap", "hidden", data.SKIN == 4)
+end
+
+function on_message(self, message_id, message)
+	if message_id == hash("respawn") then
+		for i,v in ipairs(self.blocks) do
+			self.blocks[i] = nil
+			go.delete(v)
+		end
+		self.blocks = {}
+		parse(self, true)
+	elseif message_id == hash("remove_block") then
+		for i,v in ipairs(self.blocks) do
+			if v == message.id then
+				self.blocks[i] = nil
+				go.delete(v)
+			end
+		end
+	elseif message_id == hash("ice_block") then
+		spawn_block(self, message.x, message.y, "ice_block")
+	end
+end
+

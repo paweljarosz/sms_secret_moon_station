@@ -1,0 +1,364 @@
+local data = require ("main.data")
+
+local SPIKE_TILE = 184
+local FINISH_TILE = 28
+local FIRE_TILE = 28
+local GEM_TILE = 103
+local KEY_TILE = 98
+local ICE_TILE = 92
+
+local ANIM_IDLE = hash("hero_idle_"..data.SKIN)
+local ANIM_RUN = hash("hero_run_"..data.SKIN)
+local ANIM_JUMP = hash("hero_jump_"..data.SKIN)
+local ANIM_DIE = hash("hero_die_"..data.SKIN)
+
+local SPEED = 1.1
+local FALL_MAX_SPEED = 2.5
+local GRAVITY = 0.05
+local JUMP = 1.95
+local GROUNDED = 3
+
+function init(self)
+	msg.post(".", "acquire_input_focus")
+	self.stepping = false
+	self.anim = ANIM_IDLE
+	self.move = vmath.vector3(0,0,0)
+	self.grounded = 0
+	self.dir = vmath.vector3(1,0,0)
+	self.correction = vmath.vector3()
+	SPEED = 1.1
+	data.lives = data.MAX_LIVES
+
+	if data.SKIN == 3 then data.lives = data.lives + 5
+	elseif data.SKIN == 2 then SPEED = 1.5
+	end
+
+	go.set("#left", "tint.w", 0)
+	go.set("#right", "tint.w", 0)
+	go.set("#up", "tint.w", 0)
+	go.set("#down", "tint.w", 0)
+end
+
+local function move(self)
+	local p = go.get_position() + self.move
+	go.set_position(p)
+	data.playerpos = p
+end
+
+local function drag(self)
+	if self.move.x > 0 then self.move.x = self.move.x - 0.25
+		if self.move.x < 0 then self.move.x = 0 end
+	elseif self.move.x < 0 then self.move.x = self.move.x + 0.25
+		if self.move.x > 0 then self.move.x = 0 end
+	end
+end
+
+local function gravity(self)
+	self.move.y = self.move.y - GRAVITY
+	if self.move.y < -FALL_MAX_SPEED then self.move.y = -FALL_MAX_SPEED end
+end
+
+local function dead(self)
+	sound.play("main:/sound#death", {gain = 1})
+	if data.lives <= 0 then
+		msg.post("#co", "disable")
+		self.move = vmath.vector3(0,0,0)
+		sprite.set_constant("#sprite", "tint", vmath.vector4(0,0,0,0))
+		data.state = data.STATE_GAMEOVER
+		msg.post("/game_core/view#gameover", "show", {})
+	else
+		msg.post("#co", "disable")
+		data.state = data.STATE_DEATH
+		timer.delay(0.1, false, function()
+			msg.post("#sprite", "play_animation", {id = ANIM_DIE})
+		end)
+		timer.delay(0.2, false, function()
+			msg.post(LEVEL_URL, "respawn")
+			data.lives = data.lives - 1
+			go.set_position(data.spawnpos)
+			self.move = vmath.vector3(0,0,0)
+			msg.post("#co", "enable")
+			data.state = data.STATE_PLAYING
+		end)
+	end
+end	
+
+local function hit_spike(self)
+	sound.play("main:/sound#death")
+	dead(self)
+end
+
+local function pickup_gem(self, pos, layer)
+	tilemap.set_tile("/level#tilemap", layer or "world", pos.x, pos.y, 0)
+	sound.play("main:/sound#gem")
+	data.gems = data.gems + 1
+end
+
+local function pickup_key(self, pos, layer)
+	tilemap.set_tile("/level#tilemap", layer or "world", pos.x, pos.y, 0)
+	sound.play("main:/sound#gem")
+	data.keys = data.keys + 1
+	sound.play("main:/sound#key_pickup")
+end
+
+local function level_clear(self)
+	msg.post("view#gui", "stop")
+	data.state = data.STATE_LEVELCLEAR
+	sound.play("main:/sound#clear")
+	if data.level < 5 then msg.post("/game_core/view#levelclear", "show", {})
+	else msg.post("/game_core/view#complete", "show", {})
+	end
+end
+
+--local plays_fire = 0
+--local plays_water = 0
+local dist = require ("game.distance_sound")
+
+local function checks(self)
+	local pos = data.world2tile(go.get_position())
+	--world tiles
+	local tile = tilemap.get_tile("/level#tilemap", "world", pos.x, pos.y)
+	if tile == SPIKE_TILE or tile == SPIKE_TILE+1 then hit_spike(self)
+	elseif tile == FINISH_TILE and self.grounded == GROUNDED then level_clear(self)
+	elseif tile == GEM_TILE then pickup_gem(self, pos)
+	elseif tile == KEY_TILE then pickup_key(self, pos)
+	end
+	-- hidden tiles
+	tile = tilemap.get_tile("/level#tilemap", "hidden", pos.x, pos.y)
+	if tile == GEM_TILE then pickup_gem(self, pos, "hidden")
+	elseif tile == KEY_TILE then pickup_key(self, pos, "hidden")
+	end
+	--fire and water tiles
+	local found_fire = false
+	local found_water = false
+	for x = -5,5 do
+		for y = -5, 5 do
+			tile = tilemap.get_tile("/level#tilemap", "world", pos.x + x, pos.y + y)
+			if tile then
+				if tile >= FIRE_TILE and tile <= 71 then
+					found_fire = true
+				end
+				if tile > 381 then
+					found_water = true
+				end
+			end
+		end
+	end
+	dist.play("fire", found_fire)
+	dist.play("waterfall", found_water)
+
+	if self.grounded > 0 then --not self.stepping then
+		self.grounded = self.grounded - 1
+	end
+end
+
+local function anim(self)
+	sprite.set_hflip("#sprite", self.dir.x == -1)
+	if self.grounded == 0 and self.anim ~= ANIM_JUMP then
+		msg.post("#sprite", "play_animation", {id = ANIM_JUMP})
+		self.anim = ANIM_JUMP
+	elseif self.grounded ~= 0 and self.move.x ~= 0 and self.anim ~= ANIM_RUN then
+		msg.post("#sprite", "play_animation", {id = ANIM_RUN})
+		self.anim = ANIM_RUN
+	elseif self.grounded ~= 0 and self.move.x == 0 and self.anim ~= ANIM_IDLE then
+		msg.post("#sprite", "play_animation", {id = ANIM_IDLE})
+		self.anim = ANIM_IDLE
+	end
+end
+
+local function freeze(self)
+	local pos = data.world2tile(go.get_position())
+	sound.play("main:/sound#ice_shoot", {gain = 1})
+	particlefx.play("#freeze_"..(self.dir.x == 1 and "r" or "l"))
+	for i = -1,1 do
+	local tile = tilemap.get_tile("/level#tilemap", "world", pos.x + self.dir.x , pos.y + i)
+	if tile > 399 then
+		local falling = true
+		local j = 1
+		msg.post(LEVEL_URL, "ice_block", {x = pos.x + self.dir.x, y = pos.y + i})
+		while falling do
+			if tilemap.get_tile("/level#tilemap", "world", pos.x  + self.dir.x, pos.y - j) >= 399 then
+				tilemap.set_tile("/level#tilemap", "world", pos.x  + self.dir.x, pos.y - j, 0)
+				j = j + 1
+			else
+				falling = false
+			end
+		end
+		local growing = true
+		j = 0
+		while growing do
+			if tilemap.get_tile("/level#tilemap", "world", pos.x  + self.dir.x, pos.y + j) > 399 then
+				tilemap.set_tile("/level#tilemap", "world", pos.x  + self.dir.x, pos.y + j, 0)
+				j = j + 1
+			else
+				growing = false
+			end
+		end
+		elseif tile >= 381 then		-- FREEZING
+			tilemap.set_tile("/level#tilemap", "world", pos.x + self.dir.x , pos.y + i, ICE_TILE)
+			sound.play("main:/sound#freeze", {gain = 1})
+		end
+	end
+end
+
+local function fire(self)
+	local pos = data.world2tile(go.get_position())
+	local tiles
+	--sound.play("main:/sound#ice_shoot", {gain = 1})
+	particlefx.play("#flame_"..(self.dir.x == 1 and "r" or "l"))
+	for i = -1,1 do
+		local tile = tilemap.get_tile("/level#tilemap", "world", pos.x + self.dir.x , pos.y + i)
+		if tile == 0 or tile == 30 then
+			tilemap.set_tile("/level#tilemap", "world", pos.x + self.dir.x , pos.y + i, 68)
+			sound.play("main:/sound#fire")
+			timer.delay(0.4, false, function()
+				sound.stop("main:/sound#fire")
+				tilemap.set_tile("/level#tilemap", "world", pos.x + self.dir.x , pos.y + i, 0)
+			end)
+		end
+	end
+end
+
+local function blink(dir)
+go.set(dir, "tint.w", 1)
+go.animate(dir, "tint.w", go.PLAYBACK_ONCE_FORWARD, 0, go.EASING_LINEAR, 1)
+end
+
+local function gem_detect(self)
+	local pos = data.world2tile(go.get_position())
+	for x = pos.x-6,pos.x+6 do
+	for y = pos.y-6,pos.y+6 do
+	local tile = tilemap.get_tile("/level#tilemap", "world", x,y)
+	local tile2 = tilemap.get_tile("/level#tilemap", "hidden", x,y)
+	if tile == GEM_TILE or tile2 == GEM_TILE then
+		if x > pos.x then blink("#right") end
+		if x < pos.x then blink("#left") end
+		if y < pos.y then blink("#down") end
+		if y > pos.y then blink("#up") end
+	end
+	end
+	end
+end
+
+function update(self, dt)
+	if data.state == data.STATE_PLAYING then
+		move(self)
+		drag(self)
+		gravity(self)
+		checks(self)
+		anim(self)
+	end
+	self.correction = vmath.vector3()
+end
+
+local function jump(self)
+self.move.y = JUMP
+sound.play("main:/sound#jump")
+end
+
+local function input_playing (self, action_id, action)
+	if action_id == data.left then
+		self.move.x = self.move.x - 0.3
+		if self.move.x < -SPEED then self.move.x = -SPEED end
+		self.dir.x = -1
+	elseif action_id == data.right then
+		self.move.x = self.move.x + 0.3
+		if self.move.x > SPEED then self.move.x = SPEED end
+		self.dir.x = 1
+	end
+
+	if action_id == data.action and action.pressed and self.grounded > 0 then
+		jump(self)
+	end
+
+	if action_id == hash("freeze") and action.pressed and data.ICE then
+		freeze(self)
+	end
+
+	if action_id == hash("gem_detect") and action.pressed and data.GEM_DETECT then
+		gem_detect(self)
+	end
+
+	if action_id == hash("fire") and action.pressed and data.FIRE then
+		fire(self)
+	end
+
+	if action_id == hash("timer") and action.pressed then
+		msg.post("view#gui", "timer")
+	end
+
+	if action_id == hash("quit") and action.pressed then
+		msg.post("main:/sound", "stop_sound", {})
+		msg.post("main:/handler", "show_menu")
+	end
+end
+
+local function input_getready (self, action_id, action)
+	if action_id == data.action and action.pressed then
+		msg.post("view#getready", "hide", {})
+		data.state = data.STATE_PLAYING
+	end	
+end
+
+local function input_levelclear(self, action_id, action)
+	if action_id == data.action and action.pressed then
+		data.level = data.level + 1
+		data.unlocked_level[data.level] = true
+		msg.post("game:/loader", "new_level", {})
+		data.state = data.STATE_GETREADY
+	end	
+end
+
+local function input_gameover(self, action_id, action)
+	if action_id == data.action and action.pressed then
+		msg.post("main:/handler", "show_menu")
+	end
+end
+
+function on_input(self, action_id, action)
+	if data.state == data.STATE_PLAYING then
+		input_playing (self, action_id, action)
+	elseif data.state == data.STATE_GETREADY then
+		input_getready(self, action_id, action)
+	elseif data.state == data.STATE_LEVELCLEAR then
+		input_levelclear(self, action_id, action)
+	elseif data.state == data.STATE_GAMEOVER then
+		input_gameover(self, action_id, action)
+	end
+end
+
+local function collision(self, message)
+	if message.distance > 0 then
+		local proj = vmath.project(self.correction, message.normal * message.distance)
+		if proj < 1 then
+			local comp = (message.distance - message.distance * proj) * message.normal
+			go.set_position(go.get_position() + comp)
+			self.correction = self.correction + comp
+			if math.abs(message.normal.x) == 1 then self.move.x = 0 end
+			if message.normal.y == 1 then
+				self.move.y = 0
+				self.grounded = GROUNDED
+			elseif message.normal.y == -1 then
+				self.move.y = -GRAVITY
+			end
+		end
+	end
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("position") then
+		go.set_position(message.pos)
+	elseif message_id == hash("dead") then
+		dead(self)
+	elseif message_id == data.contact then
+		if message.other_group == data.hazard
+		or message.other_group == hash("fire") then
+			dead(self)
+		else
+			collision(self, message)
+		end
+	elseif message_id == data.trigger
+	and message.other_group == data.hazard then
+		dead(self)
+	end
+end

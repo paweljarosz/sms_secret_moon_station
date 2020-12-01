@@ -1,0 +1,33 @@
+local dist = require ("game.distance_sound")
+
+function init(self)
+	msg.post("#sprite1", "disable")
+end
+
+local trigger = hash("trigger_response")
+local hazard = hash("hazard")
+
+function on_message(self, message_id, message, sender)
+	if message_id == trigger and message.enter then
+		particlefx.play("#smoke")
+		dist.play("crate_land", true)
+		if (message.other_group == hash("fire")) then
+			msg.post("#sprite1", "enable")
+			go.animate("#sprite", "tint", go.PLAYBACK_ONCE_FORWARD, vmath.vector4(1,0,0,0), go.EASING_INOUTSINE, 0.5)
+			go.animate("#sprite1", "tint", go.PLAYBACK_ONCE_FORWARD, vmath.vector4(0), go.EASING_INOUTSINE, 1, 0, function()
+				msg.post(LEVEL_URL, "remove_block", {id = go.get_id()})
+				sound.stop("main:/sound#fire")
+				go.delete()
+			end)
+			sound.play("main:/sound#box_break")
+			sound.play("main:/sound#fire")
+		elseif (message.other_group == hazard) then
+			particlefx.play("#destroybox")
+			sound.play("main:/sound#box_break")
+			go.animate("#sprite", "tint", go.PLAYBACK_ONCE_FORWARD, vmath.vector4(0), go.EASING_INOUTSINE, 1, 0, function()
+				msg.post(LEVEL_URL, "remove_block", {id = go.get_id()})
+				go.delete()
+			end)
+		end
+	end
+end

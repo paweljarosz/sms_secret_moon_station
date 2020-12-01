@@ -1,0 +1,28 @@
+go.property("door_x", 0)
+go.property("door_y", 0)
+go.property("waterfall", false)
+
+local data = require ("main.data")
+
+function on_message(self, message_id, message, sender)
+	if message_id == data.trigger then
+		sprite.play_flipbook("#sprite", message.enter and "switch_close" or "switch_open")
+		if self.waterfall then
+			local pos = {x = self.door_x, y = self.door_y, z= 0}
+			pos = data.tile2world(pos)
+			if message.enter and not self.water then 
+				self.water = factory.create("#waterfall", pos, _, {pipe = true})
+			elseif not message.enter and self.water then
+				go.delete(self.water)
+				self.water = nil
+			end
+		else
+			sound.play("main:/sound#switch", {gain = 1})
+			local door = message.enter and "main:/sound#door_open" or "main:/sound#door_close"
+			sound.play(door, {gain = 1})
+			sound.play("main:/sound#switch", {gain = 1})
+			sprite.play_flipbook("#sprite", message.enter and "switch_close" or "switch_open")
+			tilemap.set_tile("/level#tilemap", "world", self.door_x, self.door_y, message.enter and 60 or 58)
+		end
+	end
+end
